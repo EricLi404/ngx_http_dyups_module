@@ -1,5 +1,6 @@
 #include <ngx_http.h>
 #include <ngx_http_dyups.h>
+
 #ifdef NGX_DYUPS_LUA
 #include <ngx_http_dyups_lua.h>
 #endif
@@ -21,35 +22,35 @@
 
 
 typedef struct {
-    ngx_uint_t                     idx;
-    ngx_uint_t                    *ref;
-    ngx_uint_t                     deleted;
-    ngx_flag_t                     dynamic;
-    ngx_pool_t                    *pool;
-    ngx_http_conf_ctx_t           *ctx;
-    ngx_http_upstream_srv_conf_t  *upstream;
+    ngx_uint_t idx;
+    ngx_uint_t *ref;
+    ngx_uint_t deleted;
+    ngx_flag_t dynamic;
+    ngx_pool_t *pool;
+    ngx_http_conf_ctx_t *ctx;
+    ngx_http_upstream_srv_conf_t *upstream;
 } ngx_http_dyups_srv_conf_t;
 
 
 typedef struct {
-    ngx_flag_t                     enable;
-    ngx_array_t                    dy_upstreams;/* ngx_http_dyups_srv_conf_t */
-    ngx_str_t                      shm_name;
-    ngx_uint_t                     shm_size;
+    ngx_flag_t enable;
+    ngx_array_t dy_upstreams;/* ngx_http_dyups_srv_conf_t */
+    ngx_str_t shm_name;
+    ngx_uint_t shm_size;
 } ngx_http_dyups_main_conf_t;
 
 
 typedef struct {
-    ngx_uint_t                           ref;
-    ngx_http_upstream_init_peer_pt       init;
+    ngx_uint_t ref;
+    ngx_http_upstream_init_peer_pt init;
 } ngx_http_dyups_upstream_srv_conf_t;
 
 
 typedef struct {
-    void                                *data;
-    ngx_http_dyups_upstream_srv_conf_t  *scf;
-    ngx_event_get_peer_pt                get;
-    ngx_event_free_peer_pt               free;
+    void *data;
+    ngx_http_dyups_upstream_srv_conf_t *scf;
+    ngx_event_get_peer_pt get;
+    ngx_event_free_peer_pt free;
 #if (NGX_HTTP_SSL)
     ngx_ssl_session_t                   *ssl_session;
 #endif
@@ -57,78 +58,115 @@ typedef struct {
 
 
 typedef struct ngx_dyups_upstream_s {
-    ngx_rbtree_node_t                    node;
-    ngx_str_t                            name;
-    ngx_str_t                            content;
-    ngx_uint_t                           version;
+    ngx_rbtree_node_t node;
+    ngx_str_t name;
+    ngx_str_t content;
+    ngx_uint_t version;
 } ngx_dyups_upstream_t;
 
 
 typedef struct ngx_dyups_shctx_s {
-    ngx_uint_t                           version;
-    ngx_rbtree_t                         rbtree;
-    ngx_rbtree_node_t                    sentinel;
+    ngx_uint_t version;
+    ngx_rbtree_t rbtree;
+    ngx_rbtree_node_t sentinel;
 } ngx_dyups_shctx_t;
 
 
 typedef struct ngx_dyups_global_ctx_s {
-    ngx_slab_pool_t                     *shpool;
-    ngx_dyups_shctx_t                   *sh;
-    ngx_uint_t                           version;
+    ngx_slab_pool_t *shpool;
+    ngx_dyups_shctx_t *sh;
+    ngx_uint_t version;
 } ngx_dyups_global_ctx_t;
 
 
 static ngx_int_t ngx_http_dyups_pre_conf(ngx_conf_t *cf);
+
 static ngx_int_t ngx_http_dyups_init(ngx_conf_t *cf);
+
 static void *ngx_http_dyups_create_main_conf(ngx_conf_t *cf);
+
 static char *ngx_http_dyups_init_main_conf(ngx_conf_t *cf, void *conf);
+
 static char *ngx_http_dyups_interface(ngx_conf_t *cf, ngx_command_t *cmd,
-    void *conf);
+                                      void *conf);
+
 static ngx_int_t ngx_http_dyups_interface_handler(ngx_http_request_t *r);
+
 static ngx_int_t ngx_http_dyups_interface_read_body(ngx_http_request_t *r);
+
 static ngx_buf_t *ngx_http_dyups_read_body(ngx_http_request_t *r);
+
 static ngx_buf_t *ngx_http_dyups_read_body_from_file(ngx_http_request_t *r);
+
 static void ngx_http_dyups_body_handler(ngx_http_request_t *r);
+
 static void ngx_http_dyups_send_response(ngx_http_request_t *r,
-    ngx_int_t status, ngx_str_t *content);
+                                         ngx_int_t status, ngx_str_t *content);
+
 static ngx_int_t ngx_http_dyups_do_get(ngx_http_request_t *r,
-    ngx_array_t *resource);
+                                       ngx_array_t *resource);
+
 static ngx_int_t ngx_http_dyups_do_delete(ngx_http_request_t *r,
-    ngx_array_t *resource);
+                                          ngx_array_t *resource);
+
 static ngx_http_dyups_srv_conf_t *ngx_dyups_find_upstream(ngx_str_t *name,
-    ngx_int_t *idx);
+                                                          ngx_int_t *idx);
+
 static ngx_int_t ngx_dyups_add_server(ngx_http_dyups_srv_conf_t *duscf,
-    ngx_buf_t *buf);
+                                      ngx_buf_t *buf);
+
 static ngx_int_t ngx_dyups_init_upstream(ngx_http_dyups_srv_conf_t *duscf,
-    ngx_str_t *name, ngx_uint_t index);
+                                         ngx_str_t *name, ngx_uint_t index);
+
 static void ngx_dyups_mark_upstream_delete(ngx_http_dyups_srv_conf_t *duscf);
+
 static ngx_int_t ngx_http_dyups_init_peer(ngx_http_request_t *r,
-    ngx_http_upstream_srv_conf_t *us);
+                                          ngx_http_upstream_srv_conf_t *us);
+
 static ngx_int_t ngx_http_dyups_get_peer(ngx_peer_connection_t *pc, void *data);
+
 static void ngx_http_dyups_free_peer(ngx_peer_connection_t *pc, void *data,
-    ngx_uint_t state);
+                                     ngx_uint_t state);
+
 static void *ngx_http_dyups_create_srv_conf(ngx_conf_t *cf);
+
 static ngx_buf_t *ngx_http_dyups_show_list(ngx_http_request_t *r);
+
 static ngx_int_t ngx_http_dyups_init_shm_zone(ngx_shm_zone_t *shm_zone,
-    void *data);
+                                              void *data);
+
 static char *ngx_http_dyups_init_shm(ngx_conf_t *cf, void *conf);
+
 static ngx_int_t ngx_http_dyups_get_shm_name(ngx_str_t *shm_name,
-    ngx_pool_t *pool);
+                                             ngx_pool_t *pool);
+
 static ngx_int_t ngx_http_dyups_init_process(ngx_cycle_t *cycle);
+
 static void ngx_http_dyups_exit_process(ngx_cycle_t *cycle);
+
 static ngx_int_t ngx_dyups_shm_update_ups(ngx_str_t *name, ngx_buf_t *body);
+
 static ngx_int_t ngx_dyups_shm_delete_ups(ngx_str_t *name);
+
 static void ngx_dyups_shm_free_ups(ngx_slab_pool_t *shpool,
-     ngx_dyups_upstream_t *ups);
+                                   ngx_dyups_upstream_t *ups);
+
 static ngx_array_t *ngx_dyups_parse_path(ngx_pool_t *pool, ngx_str_t *path);
+
 static ngx_int_t ngx_dyups_do_delete(ngx_str_t *name, ngx_str_t *rv);
+
 static ngx_int_t ngx_dyups_do_update(ngx_str_t *name, ngx_buf_t *buf,
-    ngx_str_t *rv);
+                                     ngx_str_t *rv);
+
 static ngx_int_t ngx_dyups_sandbox_update(ngx_buf_t *buf, ngx_str_t *rv);
+
 static void ngx_http_dyups_clean_request(void *data);
+
 static ngx_int_t ngx_http_variable_dyups(ngx_http_request_t *r,
-    ngx_http_variable_value_t *v, uintptr_t data);
+                                         ngx_http_variable_value_t *v, uintptr_t data);
+
 static ngx_int_t ngx_http_dyups_add_vars(ngx_conf_t *cf);
+
 static ngx_int_t ngx_http_dyups_reload();
 
 #if (NGX_HTTP_SSL)
@@ -140,73 +178,75 @@ static void ngx_http_dyups_save_peer_session(ngx_peer_connection_t *pc,
 
 
 static ngx_int_t ngx_dyups_add_upstream_filter(
-    ngx_http_upstream_main_conf_t *umcf, ngx_http_upstream_srv_conf_t *uscf);
+        ngx_http_upstream_main_conf_t *umcf, ngx_http_upstream_srv_conf_t *uscf);
+
 static ngx_int_t ngx_dyups_del_upstream_filter(
-    ngx_http_upstream_main_conf_t *umcf, ngx_http_upstream_srv_conf_t *uscf);
+        ngx_http_upstream_main_conf_t *umcf, ngx_http_upstream_srv_conf_t *uscf);
 
 
 ngx_int_t (*ngx_dyups_add_upstream_top_filter)
-    (ngx_http_upstream_main_conf_t *umcf, ngx_http_upstream_srv_conf_t *uscf);
+        (ngx_http_upstream_main_conf_t *umcf, ngx_http_upstream_srv_conf_t *uscf);
+
 ngx_int_t (*ngx_dyups_del_upstream_top_filter)
-    (ngx_http_upstream_main_conf_t *umcf, ngx_http_upstream_srv_conf_t *uscf);
+        (ngx_http_upstream_main_conf_t *umcf, ngx_http_upstream_srv_conf_t *uscf);
 
 
-static ngx_http_variable_t  ngx_http_dyups_variables[] = {
-    { ngx_string("dyups_"), NULL, ngx_http_variable_dyups,
-      0, NGX_HTTP_VAR_PREFIX, 0 },
+static ngx_http_variable_t ngx_http_dyups_variables[] = {
+        {ngx_string("dyups_"), NULL, ngx_http_variable_dyups,
+         0, NGX_HTTP_VAR_PREFIX, 0},
 
-    ngx_http_null_variable
+        ngx_http_null_variable
 };
 
 
-static ngx_command_t  ngx_http_dyups_commands[] = {
+static ngx_command_t ngx_http_dyups_commands[] = {
 
-    { ngx_string("dyups_interface"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_NOARGS,
-      ngx_http_dyups_interface,
-      0,
-      0,
-      NULL },
+        {ngx_string("dyups_interface"),
+         NGX_HTTP_LOC_CONF | NGX_CONF_NOARGS,
+         ngx_http_dyups_interface,
+         0,
+         0,
+         NULL},
 
-    { ngx_string("dyups_shm_zone_size"),
-      NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_size_slot,
-      NGX_HTTP_MAIN_CONF_OFFSET,
-      offsetof(ngx_http_dyups_main_conf_t, shm_size),
-      NULL },
+        {ngx_string("dyups_shm_zone_size"),
+         NGX_HTTP_MAIN_CONF | NGX_CONF_TAKE1,
+         ngx_conf_set_size_slot,
+         NGX_HTTP_MAIN_CONF_OFFSET,
+         offsetof(ngx_http_dyups_main_conf_t, shm_size),
+         NULL},
 
-      ngx_null_command
+        ngx_null_command
 };
 
 
-static ngx_http_module_t  ngx_http_dyups_module_ctx = {
-    ngx_http_dyups_pre_conf,          /* preconfiguration */
-    ngx_http_dyups_init,              /* postconfiguration */
+static ngx_http_module_t ngx_http_dyups_module_ctx = {
+        ngx_http_dyups_pre_conf,          /* preconfiguration */
+        ngx_http_dyups_init,              /* postconfiguration */
 
-    ngx_http_dyups_create_main_conf,  /* create main configuration */
-    ngx_http_dyups_init_main_conf,    /* init main configuration */
+        ngx_http_dyups_create_main_conf,  /* create main configuration */
+        ngx_http_dyups_init_main_conf,    /* init main configuration */
 
-    ngx_http_dyups_create_srv_conf,   /* create server configuration */
-    NULL,                             /* merge server configuration */
+        ngx_http_dyups_create_srv_conf,   /* create server configuration */
+        NULL,                             /* merge server configuration */
 
-    NULL,                             /* create location configuration */
-    NULL                              /* merge location configuration */
+        NULL,                             /* create location configuration */
+        NULL                              /* merge location configuration */
 };
 
 
-ngx_module_t  ngx_http_dyups_module = {
-    NGX_MODULE_V1,
-    &ngx_http_dyups_module_ctx,    /* module context */
-    ngx_http_dyups_commands,       /* module directives */
-    NGX_HTTP_MODULE,               /* module type */
-    NULL,                          /* init master */
-    NULL,                          /* init module */
-    ngx_http_dyups_init_process,   /* init process */
-    NULL,                          /* init thread */
-    NULL,                          /* exit thread */
-    ngx_http_dyups_exit_process,   /* exit process */
-    NULL,                          /* exit master */
-    NGX_MODULE_V1_PADDING
+ngx_module_t ngx_http_dyups_module = {
+        NGX_MODULE_V1,
+        &ngx_http_dyups_module_ctx,    /* module context */
+        ngx_http_dyups_commands,       /* module directives */
+        NGX_HTTP_MODULE,               /* module type */
+        NULL,                          /* init master */
+        NULL,                          /* init module */
+        ngx_http_dyups_init_process,   /* init process */
+        NULL,                          /* init thread */
+        NULL,                          /* exit thread */
+        ngx_http_dyups_exit_process,   /* exit process */
+        NULL,                          /* exit master */
+        NGX_MODULE_V1_PADDING
 };
 
 
@@ -216,8 +256,7 @@ static ngx_dyups_global_ctx_t ngx_dyups_global_ctx;
 
 
 static ngx_int_t
-ngx_http_dyups_pre_conf(ngx_conf_t *cf)
-{
+ngx_http_dyups_pre_conf(ngx_conf_t *cf) {
     ngx_dyups_add_upstream_top_filter = ngx_dyups_add_upstream_filter;
     ngx_dyups_del_upstream_top_filter = ngx_dyups_del_upstream_filter;
 
@@ -225,8 +264,7 @@ ngx_http_dyups_pre_conf(ngx_conf_t *cf)
 }
 
 static ngx_int_t
-ngx_http_dyups_add_vars(ngx_conf_t *cf)
-{
+ngx_http_dyups_add_vars(ngx_conf_t *cf) {
     ngx_http_variable_t *cv, *v;
 
     for (cv = ngx_http_dyups_variables; cv->name.len; cv++) {
@@ -242,10 +280,9 @@ ngx_http_dyups_add_vars(ngx_conf_t *cf)
 
 
 static char *
-ngx_http_dyups_interface(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_http_core_loc_conf_t    *clcf;
-    ngx_http_dyups_main_conf_t  *dmcf;
+ngx_http_dyups_interface(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+    ngx_http_core_loc_conf_t *clcf;
+    ngx_http_dyups_main_conf_t *dmcf;
 
     dmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_dyups_module);
     clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
@@ -257,9 +294,8 @@ ngx_http_dyups_interface(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
 
 static void *
-ngx_http_dyups_create_main_conf(ngx_conf_t *cf)
-{
-    ngx_http_dyups_main_conf_t  *dmcf;
+ngx_http_dyups_create_main_conf(ngx_conf_t *cf) {
+    ngx_http_dyups_main_conf_t *dmcf;
 
     dmcf = ngx_pcalloc(cf->pool, sizeof(ngx_http_dyups_main_conf_t));
     if (dmcf == NULL) {
@@ -268,8 +304,7 @@ ngx_http_dyups_create_main_conf(ngx_conf_t *cf)
 
     if (ngx_array_init(&dmcf->dy_upstreams, cf->pool, NGX_DYUPS_INIT_SIZE,
                        sizeof(ngx_http_dyups_srv_conf_t))
-        != NGX_OK)
-    {
+        != NGX_OK) {
         return NULL;
     }
 
@@ -281,9 +316,8 @@ ngx_http_dyups_create_main_conf(ngx_conf_t *cf)
 
 
 static char *
-ngx_http_dyups_init_main_conf(ngx_conf_t *cf, void *conf)
-{
-    ngx_http_dyups_main_conf_t  *dmcf = conf;
+ngx_http_dyups_init_main_conf(ngx_conf_t *cf, void *conf) {
+    ngx_http_dyups_main_conf_t *dmcf = conf;
 
     if (dmcf->enable == NGX_CONF_UNSET) {
         dmcf->enable = 0;
@@ -304,15 +338,13 @@ ngx_http_dyups_init_main_conf(ngx_conf_t *cf, void *conf)
 
 
 static char *
-ngx_http_dyups_init_shm(ngx_conf_t *cf, void *conf)
-{
+ngx_http_dyups_init_shm(ngx_conf_t *cf, void *conf) {
     ngx_http_dyups_main_conf_t *dmcf = conf;
 
-    ngx_shm_zone_t  *shm_zone;
+    ngx_shm_zone_t *shm_zone;
 
     if (ngx_http_dyups_get_shm_name(&dmcf->shm_name, cf->pool)
-        != NGX_OK)
-    {
+        != NGX_OK) {
         return NGX_CONF_ERROR;
     }
 
@@ -334,9 +366,8 @@ ngx_http_dyups_init_shm(ngx_conf_t *cf, void *conf)
 
 
 static ngx_int_t
-ngx_http_dyups_get_shm_name(ngx_str_t *shm_name, ngx_pool_t *pool)
-{
-    u_char  *last;
+ngx_http_dyups_get_shm_name(ngx_str_t *shm_name, ngx_pool_t *pool) {
+    u_char *last;
 
     shm_name->data = ngx_palloc(pool, NGX_DYUPS_SHM_NAME_LEN);
     if (shm_name->data == NULL) {
@@ -353,12 +384,11 @@ ngx_http_dyups_get_shm_name(ngx_str_t *shm_name, ngx_pool_t *pool)
 
 
 static ngx_int_t
-ngx_http_dyups_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
-{
-    ngx_dyups_global_ctx_t  *octx = data;
+ngx_http_dyups_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data) {
+    ngx_dyups_global_ctx_t *octx = data;
 
-    ngx_slab_pool_t    *shpool;
-    ngx_dyups_shctx_t  *sh;
+    ngx_slab_pool_t *shpool;
+    ngx_dyups_shctx_t *sh;
 
     if (octx != NULL) {
         ngx_dyups_global_ctx.sh = octx->sh;
@@ -384,9 +414,8 @@ ngx_http_dyups_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
 
 
 static void *
-ngx_http_dyups_create_srv_conf(ngx_conf_t *cf)
-{
-    ngx_http_dyups_upstream_srv_conf_t  *conf;
+ngx_http_dyups_create_srv_conf(ngx_conf_t *cf) {
+    ngx_http_dyups_upstream_srv_conf_t *conf;
 
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_dyups_upstream_srv_conf_t));
     if (conf == NULL) {
@@ -401,16 +430,15 @@ ngx_http_dyups_create_srv_conf(ngx_conf_t *cf)
 
 
 static ngx_int_t
-ngx_http_dyups_init(ngx_conf_t *cf)
-{
-    ngx_url_t                            u;
-    ngx_uint_t                           i;
-    ngx_http_dyups_srv_conf_t           *duscf;
-    ngx_http_upstream_server_t          *us;
-    ngx_http_dyups_main_conf_t          *dmcf;
-    ngx_http_upstream_srv_conf_t       **uscfp;
-    ngx_http_upstream_main_conf_t       *umcf;
-    ngx_http_dyups_upstream_srv_conf_t  *dscf;
+ngx_http_dyups_init(ngx_conf_t *cf) {
+    ngx_url_t u;
+    ngx_uint_t i;
+    ngx_http_dyups_srv_conf_t *duscf;
+    ngx_http_upstream_server_t *us;
+    ngx_http_dyups_main_conf_t *dmcf;
+    ngx_http_upstream_srv_conf_t **uscfp;
+    ngx_http_upstream_main_conf_t *umcf;
+    ngx_http_dyups_upstream_srv_conf_t *dscf;
 
     dmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_dyups_module);
     umcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_upstream_module);
@@ -447,10 +475,10 @@ ngx_http_dyups_init(ngx_conf_t *cf)
 
     ngx_memzero(&ngx_http_dyups_deleted_upstream,
                 sizeof(ngx_http_upstream_srv_conf_t));
-    ngx_http_dyups_deleted_upstream.srv_conf = ((ngx_http_conf_ctx_t *)
-                                                (cf->ctx))->srv_conf;
+    ngx_http_dyups_deleted_upstream.srv_conf = ((ngx_http_conf_ctx_t * )
+            (cf->ctx))->srv_conf;
     ngx_http_dyups_deleted_upstream.servers = ngx_array_create(cf->pool, 1,
-                                           sizeof(ngx_http_upstream_server_t));
+                                                               sizeof(ngx_http_upstream_server_t));
 
     us = ngx_array_push(ngx_http_dyups_deleted_upstream.servers);
     if (us == NULL) {
@@ -489,12 +517,11 @@ ngx_http_dyups_init(ngx_conf_t *cf)
 
 
 static ngx_int_t
-ngx_http_dyups_init_process(ngx_cycle_t *cycle)
-{
-    ngx_core_conf_t             *ccf;
-    ngx_slab_pool_t             *shpool;
-    ngx_dyups_shctx_t           *sh;
-    ngx_http_dyups_main_conf_t  *dmcf;
+ngx_http_dyups_init_process(ngx_cycle_t *cycle) {
+    ngx_core_conf_t *ccf;
+    ngx_slab_pool_t *shpool;
+    ngx_dyups_shctx_t *sh;
+    ngx_http_dyups_main_conf_t *dmcf;
 
     ccf = (ngx_core_conf_t *) ngx_get_conf(cycle->conf_ctx, ngx_core_module);
 
@@ -521,11 +548,10 @@ ngx_http_dyups_init_process(ngx_cycle_t *cycle)
 
 
 static void
-ngx_http_dyups_exit_process(ngx_cycle_t *cycle)
-{
-    ngx_uint_t                   i;
-    ngx_http_dyups_srv_conf_t   *duscfs, *duscf;
-    ngx_http_dyups_main_conf_t  *dumcf;
+ngx_http_dyups_exit_process(ngx_cycle_t *cycle) {
+    ngx_uint_t i;
+    ngx_http_dyups_srv_conf_t *duscfs, *duscf;
+    ngx_http_dyups_main_conf_t *dumcf;
 
     dumcf = ngx_http_cycle_get_module_main_conf(ngx_cycle,
                                                 ngx_http_dyups_module);
@@ -547,9 +573,8 @@ ngx_http_dyups_exit_process(ngx_cycle_t *cycle)
 
 
 static ngx_int_t
-ngx_http_dyups_interface_handler(ngx_http_request_t *r)
-{
-    ngx_array_t  *res;
+ngx_http_dyups_interface_handler(ngx_http_request_t *r) {
+    ngx_array_t *res;
 
     res = ngx_dyups_parse_path(r->pool, &r->uri);
     if (res == NULL) {
@@ -569,11 +594,10 @@ ngx_http_dyups_interface_handler(ngx_http_request_t *r)
 
 
 ngx_int_t
-ngx_dyups_delete_upstream(ngx_str_t *name, ngx_str_t *rv)
-{
-    ngx_int_t                    status, rc;
-    ngx_slab_pool_t             *shpool;
-    ngx_http_dyups_main_conf_t  *dmcf;
+ngx_dyups_delete_upstream(ngx_str_t *name, ngx_str_t *rv) {
+    ngx_int_t status, rc;
+    ngx_slab_pool_t *shpool;
+    ngx_http_dyups_main_conf_t *dmcf;
 
     dmcf = ngx_http_cycle_get_module_main_conf(ngx_cycle,
                                                ngx_http_dyups_module);
@@ -598,7 +622,7 @@ ngx_dyups_delete_upstream(ngx_str_t *name, ngx_str_t *rv)
         status = NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
- finish:
+    finish:
 
     ngx_shmtx_unlock(&shpool->mutex);
 
@@ -607,12 +631,11 @@ ngx_dyups_delete_upstream(ngx_str_t *name, ngx_str_t *rv)
 
 
 static ngx_int_t
-ngx_http_dyups_do_get(ngx_http_request_t *r, ngx_array_t *resource)
-{
-    ngx_int_t                   rc, status;
-    ngx_buf_t                  *buf;
-    ngx_str_t                  *value;
-    ngx_chain_t                 out;
+ngx_http_dyups_do_get(ngx_http_request_t *r, ngx_array_t *resource) {
+    ngx_int_t rc, status;
+    ngx_buf_t *buf;
+    ngx_str_t *value;
+    ngx_chain_t out;
 
     rc = ngx_http_discard_request_body(r);
     if (rc != NGX_OK) {
@@ -627,8 +650,7 @@ ngx_http_dyups_do_get(ngx_http_request_t *r, ngx_array_t *resource)
     value = resource->elts;
 
     if (value[0].len == 4
-        && ngx_strncasecmp(value[0].data, (u_char *) "list", 4) == 0)
-    {
+        && ngx_strncasecmp(value[0].data, (u_char *) "list", 4) == 0) {
         buf = ngx_http_dyups_show_list(r);
         if (buf == NULL) {
             status = NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -642,7 +664,7 @@ ngx_http_dyups_do_get(ngx_http_request_t *r, ngx_array_t *resource)
         status = buf ? NGX_HTTP_OK : NGX_HTTP_NOT_FOUND;
     }
 
-finish:
+    finish:
 
     r->headers_out.status = status;
 
@@ -669,17 +691,15 @@ finish:
 }
 
 
-
 static ngx_int_t
-ngx_http_dyups_reload()
-{
-    ngx_buf_t              body;
-    ngx_int_t              rc;
-    ngx_str_t              rv;
-    ngx_slab_pool_t       *shpool;
-    ngx_dyups_shctx_t     *sh;
-    ngx_rbtree_node_t     *node, *root, *sentinel;
-    ngx_dyups_upstream_t  *ups;
+ngx_http_dyups_reload() {
+    ngx_buf_t body;
+    ngx_int_t rc;
+    ngx_str_t rv;
+    ngx_slab_pool_t *shpool;
+    ngx_dyups_shctx_t *sh;
+    ngx_rbtree_node_t *node, *root, *sentinel;
+    ngx_dyups_upstream_t *ups;
 
     sh = ngx_dyups_global_ctx.sh;
     shpool = ngx_dyups_global_ctx.shpool;
@@ -692,10 +712,9 @@ ngx_http_dyups_reload()
 
     for (node = ngx_rbtree_min(root, sentinel);
          node;
-         node = ngx_rbtree_next(&sh->rbtree, node))
-    {
-        ups = (ngx_dyups_upstream_t*)
-            ((char*) node - offsetof(ngx_dyups_upstream_t, node));
+         node = ngx_rbtree_next(&sh->rbtree, node)) {
+        ups = (ngx_dyups_upstream_t *)
+                ((char *) node - offsetof(ngx_dyups_upstream_t, node));
 
         if (ups->version > ngx_dyups_global_ctx.version) {
             continue;
@@ -716,14 +735,13 @@ ngx_http_dyups_reload()
 
 
 static ngx_buf_t *
-ngx_http_dyups_show_list(ngx_http_request_t *r)
-{
-    ngx_uint_t             len;
-    ngx_buf_t             *buf;
-    ngx_slab_pool_t       *shpool;
-    ngx_dyups_shctx_t     *sh;
-    ngx_rbtree_node_t     *node, *root, *sentinel;
-    ngx_dyups_upstream_t  *ups;
+ngx_http_dyups_show_list(ngx_http_request_t *r) {
+    ngx_uint_t len;
+    ngx_buf_t *buf;
+    ngx_slab_pool_t *shpool;
+    ngx_dyups_shctx_t *sh;
+    ngx_rbtree_node_t *node, *root, *sentinel;
+    ngx_dyups_upstream_t *ups;
 
     sh = ngx_dyups_global_ctx.sh;
     shpool = ngx_dyups_global_ctx.shpool;
@@ -739,11 +757,10 @@ ngx_http_dyups_show_list(ngx_http_request_t *r)
     len = 0;
     for (node = ngx_rbtree_min(root, sentinel);
          node;
-         node = ngx_rbtree_next(&sh->rbtree, node))
-    {
-        ups = (ngx_dyups_upstream_t*)
-            ((char*) node - offsetof(ngx_dyups_upstream_t, node));
-        len += + ups->name.len + ups->content.len + sizeof("upstream  {\n\n}\n");
+         node = ngx_rbtree_next(&sh->rbtree, node)) {
+        ups = (ngx_dyups_upstream_t *)
+                ((char *) node - offsetof(ngx_dyups_upstream_t, node));
+        len += +ups->name.len + ups->content.len + sizeof("upstream  {\n\n}\n");
     }
 
     buf = ngx_create_temp_buf(r->pool, len);
@@ -753,15 +770,14 @@ ngx_http_dyups_show_list(ngx_http_request_t *r)
 
     for (node = ngx_rbtree_min(root, sentinel);
          node;
-         node = ngx_rbtree_next(&sh->rbtree, node))
-    {
-        ups = (ngx_dyups_upstream_t*)
-            ((char*) node - offsetof(ngx_dyups_upstream_t, node));
+         node = ngx_rbtree_next(&sh->rbtree, node)) {
+        ups = (ngx_dyups_upstream_t *)
+                ((char *) node - offsetof(ngx_dyups_upstream_t, node));
         buf->last = ngx_sprintf(buf->last, "upstream %V {\n", &ups->name);
         buf->last = ngx_sprintf(buf->last, "%V\n}\n", &ups->content);
     }
 
-done:
+    done:
 
     ngx_shmtx_unlock(&shpool->mutex);
 
@@ -770,10 +786,9 @@ done:
 
 
 static ngx_int_t
-ngx_dyups_do_delete(ngx_str_t *name, ngx_str_t *rv)
-{
-    ngx_int_t                   dumy;
-    ngx_http_dyups_srv_conf_t  *duscf;
+ngx_dyups_do_delete(ngx_str_t *name, ngx_str_t *rv) {
+    ngx_int_t dumy;
+    ngx_http_dyups_srv_conf_t *duscf;
 
     duscf = ngx_dyups_find_upstream(name, &dumy);
 
@@ -795,12 +810,11 @@ ngx_dyups_do_delete(ngx_str_t *name, ngx_str_t *rv)
 
 
 static ngx_int_t
-ngx_http_dyups_do_delete(ngx_http_request_t *r, ngx_array_t *resource)
-{
-    ngx_str_t   *value, name, rv;
-    ngx_int_t    status, rc;
-    ngx_buf_t   *b;
-    ngx_chain_t  out;
+ngx_http_dyups_do_delete(ngx_http_request_t *r, ngx_array_t *resource) {
+    ngx_str_t *value, name, rv;
+    ngx_int_t status, rc;
+    ngx_buf_t *b;
+    ngx_chain_t out;
 
     rc = ngx_http_discard_request_body(r);
     if (rc != NGX_OK) {
@@ -816,8 +830,7 @@ ngx_http_dyups_do_delete(ngx_http_request_t *r, ngx_array_t *resource)
     value = resource->elts;
 
     if (value[0].len != 8
-        || ngx_strncasecmp(value[0].data, (u_char *) "upstream", 8) != 0)
-    {
+        || ngx_strncasecmp(value[0].data, (u_char *) "upstream", 8) != 0) {
         ngx_str_set(&rv, "not support this api");
         status = NGX_HTTP_NOT_ALLOWED;
         goto finish;
@@ -827,7 +840,7 @@ ngx_http_dyups_do_delete(ngx_http_request_t *r, ngx_array_t *resource)
 
     status = ngx_dyups_delete_upstream(&name, &rv);
 
-finish:
+    finish:
 
     r->headers_out.status = status;
     r->headers_out.content_length_n = rv.len;
@@ -858,9 +871,8 @@ finish:
 
 
 static ngx_int_t
-ngx_http_dyups_interface_read_body(ngx_http_request_t *r)
-{
-    ngx_int_t  rc;
+ngx_http_dyups_interface_read_body(ngx_http_request_t *r) {
+    ngx_int_t rc;
 
     rc = ngx_http_read_client_request_body(r, ngx_http_dyups_body_handler);
 
@@ -873,12 +885,11 @@ ngx_http_dyups_interface_read_body(ngx_http_request_t *r)
 
 
 static void
-ngx_http_dyups_body_handler(ngx_http_request_t *r)
-{
-    ngx_str_t                   *value, rv, name;
-    ngx_int_t                    status;
-    ngx_buf_t                   *body;
-    ngx_array_t                 *res;
+ngx_http_dyups_body_handler(ngx_http_request_t *r) {
+    ngx_str_t *value, rv, name;
+    ngx_int_t status;
+    ngx_buf_t *body;
+    ngx_array_t *res;
 
     ngx_str_set(&rv, "");
 
@@ -930,8 +941,7 @@ ngx_http_dyups_body_handler(ngx_http_request_t *r)
     value = res->elts;
 
     if (value[0].len != 8
-        || ngx_strncasecmp(value[0].data, (u_char *) "upstream", 8) != 0)
-    {
+        || ngx_strncasecmp(value[0].data, (u_char *) "upstream", 8) != 0) {
         ngx_str_set(&rv, "not support this api");
         status = NGX_HTTP_NOT_FOUND;
         goto finish;
@@ -944,18 +954,17 @@ ngx_http_dyups_body_handler(ngx_http_request_t *r)
 
     status = ngx_dyups_update_upstream(&name, body, &rv);
 
-finish:
+    finish:
 
     ngx_http_dyups_send_response(r, status, &rv);
 }
 
 
 ngx_int_t
-ngx_dyups_update_upstream(ngx_str_t *name, ngx_buf_t *buf, ngx_str_t *rv)
-{
-    ngx_int_t                    status;
-    ngx_slab_pool_t             *shpool;
-    ngx_http_dyups_main_conf_t  *dmcf;
+ngx_dyups_update_upstream(ngx_str_t *name, ngx_buf_t *buf, ngx_str_t *rv) {
+    ngx_int_t status;
+    ngx_slab_pool_t *shpool;
+    ngx_http_dyups_main_conf_t *dmcf;
 
     dmcf = ngx_http_cycle_get_module_main_conf(ngx_cycle,
                                                ngx_http_dyups_module);
@@ -981,7 +990,7 @@ ngx_dyups_update_upstream(ngx_str_t *name, ngx_buf_t *buf, ngx_str_t *rv)
         }
     }
 
- finish:
+    finish:
 
     ngx_shmtx_unlock(&shpool->mutex);
 
@@ -990,13 +999,12 @@ ngx_dyups_update_upstream(ngx_str_t *name, ngx_buf_t *buf, ngx_str_t *rv)
 
 
 static ngx_int_t
-ngx_dyups_do_update(ngx_str_t *name, ngx_buf_t *buf, ngx_str_t *rv)
-{
-    ngx_int_t                       rc, idx;
-    ngx_http_dyups_srv_conf_t      *duscf;
-    ngx_http_dyups_main_conf_t     *dumcf;
-    ngx_http_upstream_srv_conf_t  **uscfp;
-    ngx_http_upstream_main_conf_t  *umcf;
+ngx_dyups_do_update(ngx_str_t *name, ngx_buf_t *buf, ngx_str_t *rv) {
+    ngx_int_t rc, idx;
+    ngx_http_dyups_srv_conf_t *duscf;
+    ngx_http_dyups_main_conf_t *dumcf;
+    ngx_http_upstream_srv_conf_t **uscfp;
+    ngx_http_upstream_main_conf_t *umcf;
 
     umcf = ngx_http_cycle_get_module_main_conf(ngx_cycle,
                                                ngx_http_upstream_module);
@@ -1064,12 +1072,11 @@ ngx_dyups_do_update(ngx_str_t *name, ngx_buf_t *buf, ngx_str_t *rv)
 
 
 static ngx_int_t
-ngx_dyups_sandbox_update(ngx_buf_t *buf, ngx_str_t *rv)
-{
-    ngx_int_t  rc;
-    ngx_str_t  dumy;
+ngx_dyups_sandbox_update(ngx_buf_t *buf, ngx_str_t *rv) {
+    ngx_int_t rc;
+    ngx_str_t dumy;
 
-    ngx_str_t  sandbox = ngx_string("_dyups_upstream_sandbox_");
+    ngx_str_t sandbox = ngx_string("_dyups_upstream_sandbox_");
 
     rc = ngx_dyups_do_update(&sandbox, buf, rv);
 
@@ -1080,18 +1087,17 @@ ngx_dyups_sandbox_update(ngx_buf_t *buf, ngx_str_t *rv)
 
 
 static char *
-ngx_dyups_parse_upstream(ngx_conf_t *cf, ngx_buf_t *buf)
-{
-    char                       *rc;
-    ngx_buf_t                   b;
-    ngx_str_t                   s;
-    ngx_uint_t                  i;
-    ngx_hash_t                  vh, vh_prev;
-    ngx_array_t                 va, va_prev;
-    ngx_conf_file_t             conf_file;
-    ngx_http_variable_t        *v;
-    ngx_hash_keys_arrays_t      vk;
-    ngx_http_core_main_conf_t  *cmcf;
+ngx_dyups_parse_upstream(ngx_conf_t *cf, ngx_buf_t *buf) {
+    char *rc;
+    ngx_buf_t b;
+    ngx_str_t s;
+    ngx_uint_t i;
+    ngx_hash_t vh, vh_prev;
+    ngx_array_t va, va_prev;
+    ngx_conf_file_t conf_file;
+    ngx_http_variable_t *v;
+    ngx_hash_keys_arrays_t vk;
+    ngx_http_core_main_conf_t *cmcf;
 
     b = *buf;   /* avoid modifying @buf */
 
@@ -1115,7 +1121,7 @@ ngx_dyups_parse_upstream(ngx_conf_t *cf, ngx_buf_t *buf)
     ngx_memzero(&vh, sizeof(vh));
     ngx_memzero(&vk, sizeof(vk));
 
-    cmcf->variables      = va;
+    cmcf->variables = va;
     cmcf->variables_hash = vh;
     cmcf->variables_keys = &vk;
 
@@ -1147,7 +1153,7 @@ ngx_dyups_parse_upstream(ngx_conf_t *cf, ngx_buf_t *buf)
         }
     }
 
-    cmcf->variables      = va_prev;
+    cmcf->variables = va_prev;
     cmcf->variables_hash = vh_prev;
     cmcf->variables_keys = NULL;
 
@@ -1156,12 +1162,11 @@ ngx_dyups_parse_upstream(ngx_conf_t *cf, ngx_buf_t *buf)
 
 
 static ngx_int_t
-ngx_dyups_add_server(ngx_http_dyups_srv_conf_t *duscf, ngx_buf_t *buf)
-{
-    ngx_conf_t                           cf;
-    ngx_http_upstream_init_pt            init;
-    ngx_http_upstream_srv_conf_t        *uscf;
-    ngx_http_dyups_upstream_srv_conf_t  *dscf;
+ngx_dyups_add_server(ngx_http_dyups_srv_conf_t *duscf, ngx_buf_t *buf) {
+    ngx_conf_t cf;
+    ngx_http_upstream_init_pt init;
+    ngx_http_upstream_srv_conf_t *uscf;
+    ngx_http_dyups_upstream_srv_conf_t *dscf;
 
     uscf = duscf->upstream;
 
@@ -1199,8 +1204,8 @@ ngx_dyups_add_server(ngx_http_dyups_srv_conf_t *duscf, ngx_buf_t *buf)
     cf.log = ngx_cycle->log;
     cf.ctx = duscf->ctx;
 
-    init = uscf->peer.init_upstream ? uscf->peer.init_upstream:
-        ngx_http_upstream_init_round_robin;
+    init = uscf->peer.init_upstream ? uscf->peer.init_upstream :
+           ngx_http_upstream_init_round_robin;
 
     if (init(&cf, uscf) != NGX_OK) {
         return NGX_ERROR;
@@ -1216,12 +1221,11 @@ ngx_dyups_add_server(ngx_http_dyups_srv_conf_t *duscf, ngx_buf_t *buf)
 
 
 static ngx_http_dyups_srv_conf_t *
-ngx_dyups_find_upstream(ngx_str_t *name, ngx_int_t *idx)
-{
-    ngx_uint_t                      i;
-    ngx_http_dyups_srv_conf_t      *duscfs, *duscf, *duscf_del;
-    ngx_http_dyups_main_conf_t     *dumcf;
-    ngx_http_upstream_srv_conf_t   *uscf;
+ngx_dyups_find_upstream(ngx_str_t *name, ngx_int_t *idx) {
+    ngx_uint_t i;
+    ngx_http_dyups_srv_conf_t *duscfs, *duscf, *duscf_del;
+    ngx_http_dyups_main_conf_t *dumcf;
+    ngx_http_upstream_srv_conf_t *uscf;
 
     dumcf = ngx_http_cycle_get_module_main_conf(ngx_cycle,
                                                 ngx_http_dyups_module);
@@ -1274,8 +1278,7 @@ ngx_dyups_find_upstream(ngx_str_t *name, ngx_int_t *idx)
 
         if (uscf->host.len != name->len
             || ngx_strncasecmp(uscf->host.data, name->data, uscf->host.len)
-               != 0)
-        {
+               != 0) {
             continue;
         }
 
@@ -1290,16 +1293,15 @@ ngx_dyups_find_upstream(ngx_str_t *name, ngx_int_t *idx)
 
 static ngx_int_t
 ngx_dyups_init_upstream(ngx_http_dyups_srv_conf_t *duscf, ngx_str_t *name,
-    ngx_uint_t index)
-{
-    ngx_uint_t                           mi, m;
-    ngx_conf_t                           cf;
-    ngx_module_t                        **modules;
-    ngx_http_module_t                   *module;
-    ngx_http_conf_ctx_t                 *ctx;
-    ngx_http_upstream_srv_conf_t        *uscf, **uscfp;
-    ngx_http_upstream_main_conf_t       *umcf;
-    ngx_http_dyups_upstream_srv_conf_t  *dscf;
+                        ngx_uint_t index) {
+    ngx_uint_t mi, m;
+    ngx_conf_t cf;
+    ngx_module_t **modules;
+    ngx_http_module_t *module;
+    ngx_http_conf_ctx_t *ctx;
+    ngx_http_upstream_srv_conf_t *uscf, **uscfp;
+    ngx_http_upstream_main_conf_t *umcf;
+    ngx_http_dyups_upstream_srv_conf_t *dscf;
 
     umcf = ngx_http_cycle_get_module_main_conf(ngx_cycle,
                                                ngx_http_upstream_module);
@@ -1316,14 +1318,14 @@ ngx_dyups_init_upstream(ngx_http_dyups_srv_conf_t *duscf, ngx_str_t *name,
     }
 
     uscf->flags = NGX_HTTP_UPSTREAM_CREATE
-                 |NGX_HTTP_UPSTREAM_WEIGHT
-#ifdef NGX_HTTP_UPSTREAM_MAX_CONNS
-                 |NGX_HTTP_UPSTREAM_MAX_CONNS
-#endif
-                 |NGX_HTTP_UPSTREAM_MAX_FAILS
-                 |NGX_HTTP_UPSTREAM_FAIL_TIMEOUT
-                 |NGX_HTTP_UPSTREAM_DOWN
-                 |NGX_HTTP_UPSTREAM_BACKUP;
+                  | NGX_HTTP_UPSTREAM_WEIGHT
+                  #ifdef NGX_HTTP_UPSTREAM_MAX_CONNS
+                  |NGX_HTTP_UPSTREAM_MAX_CONNS
+                  #endif
+                  | NGX_HTTP_UPSTREAM_MAX_FAILS
+                  | NGX_HTTP_UPSTREAM_FAIL_TIMEOUT
+                  | NGX_HTTP_UPSTREAM_DOWN
+                  | NGX_HTTP_UPSTREAM_BACKUP;
 
     uscf->host.data = ngx_pstrdup(duscf->pool, name);
     if (uscf->host.data == NULL) {
@@ -1355,7 +1357,7 @@ ngx_dyups_init_upstream(ngx_http_dyups_srv_conf_t *duscf, ngx_str_t *name,
     }
 
     ctx->main_conf = ((ngx_http_conf_ctx_t *)
-                      ngx_cycle->conf_ctx[ngx_http_module.index])->main_conf;
+            ngx_cycle->conf_ctx[ngx_http_module.index])->main_conf;
 
     ctx->srv_conf = ngx_pcalloc(cf.pool, sizeof(void *) * ngx_http_max_module);
     if (ctx->srv_conf == NULL) {
@@ -1403,12 +1405,11 @@ ngx_dyups_init_upstream(ngx_http_dyups_srv_conf_t *duscf, ngx_str_t *name,
 
 
 static void
-ngx_dyups_mark_upstream_delete(ngx_http_dyups_srv_conf_t *duscf)
-{
-    ngx_uint_t                      i;
-    ngx_http_upstream_server_t     *us;
-    ngx_http_upstream_srv_conf_t   *uscf, **uscfp;
-    ngx_http_upstream_main_conf_t  *umcf;
+ngx_dyups_mark_upstream_delete(ngx_http_dyups_srv_conf_t *duscf) {
+    ngx_uint_t i;
+    ngx_http_upstream_server_t *us;
+    ngx_http_upstream_srv_conf_t *uscf, **uscfp;
+    ngx_http_upstream_main_conf_t *umcf;
 
     uscf = duscf->upstream;
     umcf = ngx_http_cycle_get_module_main_conf(ngx_cycle,
@@ -1432,11 +1433,10 @@ ngx_dyups_mark_upstream_delete(ngx_http_dyups_srv_conf_t *duscf)
 
 static void
 ngx_http_dyups_send_response(ngx_http_request_t *r, ngx_int_t status,
-    ngx_str_t *content)
-{
-    ngx_int_t    rc;
-    ngx_buf_t   *b;
-    ngx_chain_t  out;
+                             ngx_str_t *content) {
+    ngx_int_t rc;
+    ngx_buf_t *b;
+    ngx_chain_t out;
 
     r->headers_out.status = status;
     r->headers_out.content_length_n = content->len;
@@ -1470,11 +1470,10 @@ ngx_http_dyups_send_response(ngx_http_request_t *r, ngx_int_t status,
 
 
 static ngx_buf_t *
-ngx_http_dyups_read_body(ngx_http_request_t *r)
-{
-    size_t        len;
-    ngx_buf_t    *buf, *next, *body;
-    ngx_chain_t  *cl;
+ngx_http_dyups_read_body(ngx_http_request_t *r) {
+    size_t len;
+    ngx_buf_t *buf, *next, *body;
+    ngx_chain_t *cl;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "[dyups] interface read post body");
@@ -1505,12 +1504,11 @@ ngx_http_dyups_read_body(ngx_http_request_t *r)
 
 
 static ngx_buf_t *
-ngx_http_dyups_read_body_from_file(ngx_http_request_t *r)
-{
-    size_t        len;
-    ssize_t       size;
-    ngx_buf_t    *buf, *body;
-    ngx_chain_t  *cl;
+ngx_http_dyups_read_body_from_file(ngx_http_request_t *r) {
+    size_t len;
+    ssize_t size;
+    ngx_buf_t *buf, *body;
+    ngx_chain_t *cl;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "[dyups] interface read post body from file");
@@ -1570,11 +1568,10 @@ ngx_http_dyups_read_body_from_file(ngx_http_request_t *r)
 
 
 ngx_array_t *
-ngx_dyups_parse_path(ngx_pool_t *pool, ngx_str_t *path)
-{
-    u_char       *p, *last, *end;
-    ngx_str_t    *str;
-    ngx_array_t  *array;
+ngx_dyups_parse_path(ngx_pool_t *pool, ngx_str_t *path) {
+    u_char *p, *last, *end;
+    ngx_str_t *str;
+    ngx_array_t *array;
 
     array = ngx_array_create(pool, 8, sizeof(ngx_str_t));
     if (array == NULL) {
@@ -1584,7 +1581,7 @@ ngx_dyups_parse_path(ngx_pool_t *pool, ngx_str_t *path)
     p = path->data + 1;
     last = path->data + path->len;
 
-    while(p < last) {
+    while (p < last) {
         end = ngx_strlchr(p, last, '/');
         str = ngx_array_push(array);
 
@@ -1622,12 +1619,11 @@ ngx_dyups_parse_path(ngx_pool_t *pool, ngx_str_t *path)
 
 static ngx_int_t
 ngx_http_dyups_init_peer(ngx_http_request_t *r,
-    ngx_http_upstream_srv_conf_t *us)
-{
-    ngx_int_t                            rc;
-    ngx_pool_cleanup_t                  *cln;
-    ngx_http_dyups_ctx_t                *ctx;
-    ngx_http_dyups_upstream_srv_conf_t  *dscf;
+                         ngx_http_upstream_srv_conf_t *us) {
+    ngx_int_t rc;
+    ngx_pool_cleanup_t *cln;
+    ngx_http_dyups_ctx_t *ctx;
+    ngx_http_dyups_upstream_srv_conf_t *dscf;
 
     dscf = us->srv_conf[ngx_http_dyups_module.ctx_index];
 
@@ -1675,9 +1671,8 @@ ngx_http_dyups_init_peer(ngx_http_request_t *r,
 
 
 static ngx_int_t
-ngx_http_dyups_get_peer(ngx_peer_connection_t *pc, void *data)
-{
-    ngx_http_dyups_ctx_t  *ctx = data;
+ngx_http_dyups_get_peer(ngx_peer_connection_t *pc, void *data) {
+    ngx_http_dyups_ctx_t *ctx = data;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0,
                    "[dyups] dynamic upstream get handler count %i",
@@ -1689,11 +1684,10 @@ ngx_http_dyups_get_peer(ngx_peer_connection_t *pc, void *data)
 
 static void
 ngx_http_dyups_free_peer(ngx_peer_connection_t *pc, void *data,
-    ngx_uint_t state)
-{
-    ngx_http_dyups_ctx_t  *ctx = data;
+                         ngx_uint_t state) {
+    ngx_http_dyups_ctx_t *ctx = data;
 
-    ngx_pool_cleanup_t  *cln;
+    ngx_pool_cleanup_t *cln;
 
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0,
@@ -1722,16 +1716,15 @@ ngx_http_dyups_free_peer(ngx_peer_connection_t *pc, void *data,
     cln->handler = ngx_http_dyups_clean_request;
     cln->data = &ctx->scf->ref;
 
- done:
+    done:
 
     ctx->free(pc, ctx->data, state);
 }
 
 
 static void
-ngx_http_dyups_clean_request(void *data)
-{
-    ngx_uint_t  *ref = data;
+ngx_http_dyups_clean_request(void *data) {
+    ngx_uint_t *ref = data;
 
     (*ref)--;
 
@@ -1741,11 +1734,10 @@ ngx_http_dyups_clean_request(void *data)
 
 
 static ngx_int_t
-ngx_dyups_shm_delete_ups(ngx_str_t *name)
-{
-    uint32_t              hash;
-    ngx_slab_pool_t      *shpool;
-    ngx_dyups_shctx_t    *sh;
+ngx_dyups_shm_delete_ups(ngx_str_t *name) {
+    uint32_t hash;
+    ngx_slab_pool_t *shpool;
+    ngx_dyups_shctx_t *sh;
     ngx_dyups_upstream_t *ups;
 
     sh = ngx_dyups_global_ctx.sh;
@@ -1753,7 +1745,7 @@ ngx_dyups_shm_delete_ups(ngx_str_t *name)
 
     hash = ngx_crc32_short(name->data, name->len);
     ups = (ngx_dyups_upstream_t *)
-              ngx_str_rbtree_lookup(&sh->rbtree, name, hash);
+            ngx_str_rbtree_lookup(&sh->rbtree, name, hash);
 
     if (ups) {
         sh->version++;
@@ -1766,10 +1758,9 @@ ngx_dyups_shm_delete_ups(ngx_str_t *name)
 
 
 static ngx_int_t
-ngx_dyups_shm_update_ups(ngx_str_t *name, ngx_buf_t *body)
-{
-    ngx_slab_pool_t      *shpool;
-    ngx_dyups_shctx_t    *sh;
+ngx_dyups_shm_update_ups(ngx_str_t *name, ngx_buf_t *body) {
+    ngx_slab_pool_t *shpool;
+    ngx_dyups_shctx_t *sh;
     ngx_dyups_upstream_t *ups;
 
     sh = ngx_dyups_global_ctx.sh;
@@ -1817,15 +1808,15 @@ ngx_dyups_shm_update_ups(ngx_str_t *name, ngx_buf_t *body)
     ngx_rbtree_insert(&sh->rbtree, &ups->node);
 
     ups = (ngx_dyups_upstream_t *)
-        ngx_str_rbtree_lookup(&sh->rbtree, &ups->name, ups->node.key);
+            ngx_str_rbtree_lookup(&sh->rbtree, &ups->name, ups->node.key);
 
     ngx_log_error(NGX_LOG_INFO, ngx_cycle->log, 0,
-                   "[dyups] update %V, version: %ui",
-                   &ups->name, sh->version);
+                  "[dyups] update %V, version: %ui",
+                  &ups->name, sh->version);
 
     return NGX_OK;
 
-failed:
+    failed:
 
     if (ups) {
         ngx_dyups_shm_free_ups(shpool, ups);
@@ -1836,8 +1827,7 @@ failed:
 
 
 static void
-ngx_dyups_shm_free_ups(ngx_slab_pool_t *shpool, ngx_dyups_upstream_t *ups)
-{
+ngx_dyups_shm_free_ups(ngx_slab_pool_t *shpool, ngx_dyups_upstream_t *ups) {
     if (ups->name.data) {
         ngx_slab_free_locked(shpool, ups->name.data);
     }
@@ -1851,19 +1841,18 @@ ngx_dyups_shm_free_ups(ngx_slab_pool_t *shpool, ngx_dyups_upstream_t *ups)
 
 static ngx_int_t
 ngx_http_variable_dyups(ngx_http_request_t *r, ngx_http_variable_value_t *v,
-    uintptr_t data)
-{
+                        uintptr_t data) {
     ngx_str_t *name = (ngx_str_t *) data;
 
-    size_t                      len;
-    u_char                     *low, *p;
-    uint32_t                    hash;
-    ngx_int_t                   rc;
-    ngx_str_t                   key, rv, uname;
-    ngx_slab_pool_t            *shpool;
-    ngx_dyups_shctx_t          *sh;
-    ngx_dyups_upstream_t       *ups;
-    ngx_http_variable_value_t  *vv;
+    size_t len;
+    u_char *low, *p;
+    uint32_t hash;
+    ngx_int_t rc;
+    ngx_str_t key, rv, uname;
+    ngx_slab_pool_t *shpool;
+    ngx_dyups_shctx_t *sh;
+    ngx_dyups_upstream_t *ups;
+    ngx_http_variable_value_t *vv;
 
     len = name->len - (sizeof("dyups_") - 1);
     p = name->data + sizeof("dyups_") - 1;
@@ -1901,7 +1890,7 @@ ngx_http_variable_dyups(ngx_http_request_t *r, ngx_http_variable_value_t *v,
 
     hash = ngx_crc32_short(uname.data, uname.len);
     ups = (ngx_dyups_upstream_t *)
-        ngx_str_rbtree_lookup(&sh->rbtree, &uname, hash);
+            ngx_str_rbtree_lookup(&sh->rbtree, &uname, hash);
 
     if (!ups) {
         rc = ngx_dyups_do_delete(&uname, &rv);
@@ -1990,8 +1979,7 @@ ngx_http_dyups_save_peer_session(ngx_peer_connection_t *pc, void *data)
 
 static ngx_int_t
 ngx_dyups_add_upstream_filter(ngx_http_upstream_main_conf_t *umcf,
-    ngx_http_upstream_srv_conf_t *uscf)
-{
+                              ngx_http_upstream_srv_conf_t *uscf) {
 #if (NGX_HTTP_UPSTREAM_RBTREE)
     uscf->node.key = ngx_crc32_short(uscf->host.data, uscf->host.len);
     ngx_rbtree_insert(&umcf->rbtree, &uscf->node);
@@ -2003,8 +1991,7 @@ ngx_dyups_add_upstream_filter(ngx_http_upstream_main_conf_t *umcf,
 
 static ngx_int_t
 ngx_dyups_del_upstream_filter(ngx_http_upstream_main_conf_t *umcf,
-    ngx_http_upstream_srv_conf_t *uscf)
-{
+                              ngx_http_upstream_srv_conf_t *uscf) {
 #if (NGX_HTTP_UPSTREAM_RBTREE)
     ngx_rbtree_delete(&umcf->rbtree, &uscf->node);
 #endif

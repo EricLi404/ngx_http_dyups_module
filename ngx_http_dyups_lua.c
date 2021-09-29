@@ -4,17 +4,18 @@
 
 
 static int ngx_http_dyups_lua_register(lua_State *L);
+
 static int ngx_http_lua_update_upstream(lua_State *L);
+
 static int ngx_http_lua_delete_upstream(lua_State *L);
 
 
 static int
-ngx_http_lua_update_upstream(lua_State *L)
-{
-    size_t     size;
-    ngx_int_t  status;
-    ngx_str_t  name, rv;
-    ngx_buf_t  buf;
+ngx_http_lua_update_upstream(lua_State *L) {
+    size_t size;
+    ngx_int_t status;
+    ngx_str_t name, rv;
+    ngx_buf_t buf;
 
     if (lua_gettop(L) != 2) {
         return luaL_error(L, "exactly 2 arguments expected");
@@ -34,10 +35,9 @@ ngx_http_lua_update_upstream(lua_State *L)
 
 
 static int
-ngx_http_lua_delete_upstream(lua_State *L)
-{
-    ngx_int_t  status;
-    ngx_str_t  name, rv;
+ngx_http_lua_delete_upstream(lua_State *L) {
+    ngx_int_t status;
+    ngx_str_t name, rv;
 
     if (lua_gettop(L) != 1) {
         return luaL_error(L, "exactly 1 argument expected");
@@ -55,8 +55,7 @@ ngx_http_lua_delete_upstream(lua_State *L)
 
 
 static int
-ngx_http_dyups_lua_register(lua_State *L)
-{
+ngx_http_dyups_lua_register(lua_State *L) {
     lua_createtable(L, 0, 1);
 
     lua_pushcfunction(L, ngx_http_lua_update_upstream);
@@ -70,12 +69,10 @@ ngx_http_dyups_lua_register(lua_State *L)
 
 
 ngx_int_t
-ngx_http_dyups_lua_preload(ngx_conf_t *cf)
-{
+ngx_http_dyups_lua_preload(ngx_conf_t *cf) {
     if (ngx_http_lua_add_package_preload(cf, "ngx.dyups",
                                          ngx_http_dyups_lua_register)
-        != NGX_OK)
-    {
+        != NGX_OK) {
         return NGX_ERROR;
     }
 
